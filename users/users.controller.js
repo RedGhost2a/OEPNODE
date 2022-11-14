@@ -4,23 +4,48 @@ const Joi = require('joi');
 const validateRequest = require('_middleware/validate-request');
 const Role = require('_helpers/role');
 const userService = require('./user.service');
+const authorize = require('_middleware/authorize')
+
 
 // routes
 
-router.get('/', getAll);
+router.get('/',getAll);
 router.get('/:id', getById);
 router.post('/new', createSchema, create);
 router.put('/:id', updateSchema, update);
 router.delete('/:id', _delete);
+router.post('/authenticate', authenticateSchema, authenticate);
+router.get('/current', getCurrent);
+
+
 
 module.exports = router;
 
 // route functions
 
+
+function authenticateSchema(req, res, next) {
+    const schema = Joi.object({
+        email: Joi.string().required(),
+        password: Joi.string().required()
+    });
+    validateRequest(req, next, schema);
+}
+
+function authenticate(req, res, next) {
+    userService.authenticate(req.body)
+        .then(user => res.json(user))
+        .catch(next);
+}
+
 function getAll(req, res, next) {
     userService.getAll()
         .then(users => res.json(users))
         .catch(next);
+}
+
+function getCurrent(req, res, next) {
+    res.json(req.user);
 }
 
 function getById(req, res, next) {

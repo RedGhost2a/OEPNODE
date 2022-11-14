@@ -1,12 +1,27 @@
-﻿const bcrypt = require('bcryptjs');
+﻿const config = require('config.json');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const db = require('_helpers/db');
+
 module.exports = {
+    authenticate,
     getAll,
     getById,
     create,
     update,
     delete: _delete
 };
+
+async function authenticate({ email, password }) {
+    const user = await db.User.findOne({ where: { email } });
+
+    if (!user || !(await bcrypt.compare(password, user.password)))
+        throw 'Username or password is incorrect';
+
+    // authentication successful
+    const token = jwt.sign({ sub: user.id }, config.secret, { expiresIn: '7d' });
+    return { ...omitHash(user.get()), token };
+}
 
 async function getAll() {
     return await db.User.findAll();
@@ -19,25 +34,25 @@ async function getById(id) {
 async function create(params) {
     // validate
     if (await db.User.findOne({ where: { email: params.email } })) {
-        throw 'Email "' + params.email + '" is already registered';
+        throw 'Username "' + params.email + '" is already taken';
     }
 
-    const user = new db.User(params);
-    
     // hash password
-    user.password = await bcrypt.hash(params.password, 10);
+    if (params.password) {
+        params.password = await bcrypt.hash(params.password, 10);
+    }
 
     // save user
-    await user.save();
+    await db.User.create(params);
 }
 
 async function update(id, params) {
     const user = await getUser(id);
 
     // validate
-    const emailChanged = params.email && user.email !== params.email;
-    if (emailChanged && await db.User.findOne({ where: { email: params.email } })) {
-        throw 'Email "' + params.email + '" is already registered';
+    const usernameChanged = params.email && user.email !== params.email;
+    if (usernameChanged && await db.User.findOne({ where: { email: params.email } })) {
+        throw 'Username "' + params.email + '" is already taken';
     }
 
     // hash password if it was entered
@@ -48,6 +63,8 @@ async function update(id, params) {
     // copy params to user and save
     Object.assign(user, params);
     await user.save();
+
+    return omitHash(user.get());
 }
 
 async function _delete(id) {
@@ -61,4 +78,9 @@ async function getUser(id) {
     const user = await db.User.findByPk(id);
     if (!user) throw 'User not found';
     return user;
+}
+
+function omitHash(user) {
+    const { password, ...userWithoutHash } = user;
+    return userWithoutHash;
 }
